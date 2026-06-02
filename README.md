@@ -5,17 +5,18 @@
  ## 📂 프로젝트 구조
  ```
  yolomodels/
- ├── yolo_dataset4/                # YOLO 형식 데이터셋 (split_dataset.py 결과)
- │   ├── train/
- │   │   ├── images/
- │   │   └── labels/
- │   ├── val/
- │   │   ├── images/
- │   │   └── labels/
- │   ├── test/
- │   │   ├── images/
- │   │   └── labels/
- │   └── dataset.yaml              # 데이터셋 설정 파일
+ ├── exports/                     # Label Studio 등에서 내보낸 데이터가 저장되는 폴더
+ │   └── project4/                # 개별 프로젝트 폴더 예시
+ │       ├── images/
+ │       ├── labels/
+ │       └── notes.json
+ ├── datasets/                    # 전처리 및 분할 완료된 YOLO 형식 데이터셋 저장소
+ │   └── yolo_dataset/            # split_dataset.py의 기본 출력 위치
+ │       ├── train/
+ │       ├── val/
+ │       ├── test/
+ │       └── dataset.yaml
+ ├── models/                      # 학습 완료된 가중치(.pt) 파일들이 저장되는 곳
  ├── runs/                        # 학습 결과 저장 디렉토리
  ├── split_dataset.py             # 데이터셋 분할 스크립트
  ├── train.py                     # 모델 학습 스크립트
@@ -55,22 +56,26 @@
 - 중복 없이 무작위 샘플링
 - YOLO 학습을 위한 디렉토리 구조 자동 생성
 
- #### 사용 방법
- ```bash
- python split_dataset.py --project-dir project4 --output-dir yolo_dataset4
- ```
+  #### 사용 방법
+  ```bash
+  # 기본 실행 (exports/ 폴더 내 가장 최근 데이터를 자동으로 탐색하여 datasets/yolo_dataset에 저장)
+  python split_dataset.py
 
- `project_dir` 하위에 다음 구조가 있다고 가정합니다.
+  # 특정 입력 폴더와 출력 폴더 지정
+  python split_dataset.py --input exports/project4 --output datasets/yolo_dataset
+  ```
 
- - `images/*.jpg`
- - `labels/*.txt`
- - `notes.json` (클래스 이름을 읽어 `dataset.yaml` 생성 시 사용)
+  입력 폴더 하위에는 다음 구조가 존재해야 합니다 (자동 인식 대상).
 
- 분할 비율/시드/이미지 확장자는 옵션으로 조정할 수 있습니다.
+  - `images/*.jpg` (또는 png, jpeg 등 지정된 이미지 확장자)
+  - `labels/*.txt` (YOLO 포맷의 라벨 파일 또는 Label Studio의 백업 라벨 파일)
+  - `notes.json` 또는 `classes.txt` (클래스 맵핑 및 이름을 자동으로 읽어와 dataset.yaml 생성 시 사용)
 
- ```bash
- python split_dataset.py --project-dir project4 --output-dir yolo_dataset4 --train-ratio 0.7 --val-ratio 0.15 --test-ratio 0.15 --seed 42 --exts jpg,jpeg,png
- ```
+  분할 비율/시드/이미지 확장자는 옵션으로 조정할 수 있습니다.
+
+  ```bash
+  python split_dataset.py --input exports/project4 --output datasets/yolo_dataset --train-ratio 0.7 --val-ratio 0.15 --test-ratio 0.15 --seed 42 --exts jpg,jpeg,png
+  ```
 
  ### 2. train.py
  
@@ -82,11 +87,14 @@
 - ONNX 형식으로 모델 내보내기
  - 학습 파라미터 조정 가능 (에포크, 배치 크기, 이미지 크기)
 
- #### 사용 예시
- ```bash
- # 기본 학습 (YOLOv8 medium 모델, 100 에포크)
- python train.py --data-yaml yolo_dataset4/dataset.yaml --model-size yolov8m.pt --epochs 100
- ```
+  #### 사용 예시
+  ```bash
+  # 기본 학습 (datasets/ 폴더 내 가장 최근에 생성된 데이터셋의 dataset.yaml을 자동 인식)
+  python train.py --model-size yolov8m.pt --epochs 100
+
+  # 특정 yaml 파일을 지정하여 학습
+  python train.py --data-yaml datasets/yolo_dataset/dataset.yaml --model-size yolov8m.pt --epochs 100
+  ```
 
  ## ⚙️ 설치 및 설정
  
@@ -122,15 +130,19 @@
  ```
 
  ## 🔄 데이터셋 준비 (YOLO 형식)
- 1. 원본 데이터 폴더(`project_dir`)에 `images/`, `labels/`, `notes.json`을 준비합니다.
- 2. `split_dataset.py`의 `project_dir`, `dataset_dir`를 본인 경로로 수정합니다.
- 3. `python split_dataset.py` 실행 후 생성된 `dataset.yaml` 경로를 학습에 사용합니다.
+  1. 원본 데이터 폴더를 `exports/` 하위에 배치합니다 (예: `exports/project4/`).
+  2. `python split_dataset.py`를 실행합니다 (자동으로 최신 폴더를 찾아서 분할 후 `datasets/yolo_dataset`에 저장합니다).
+  3. 필요시 생성된 `datasets/yolo_dataset/dataset.yaml` 경로 또는 자동 인식을 사용하여 학습을 시작합니다.
 
  ## 🚂 YOLOv8 모델 학습
  
  ### 학습 실행
  ```bash
- python train.py --data-yaml ./yolo_dataset4/dataset.yaml --model-size yolov8s.pt --epochs 50
+ # 기본 실행 (최신 데이터셋 자동 인식)
+ python train.py --model-size yolov8s.pt --epochs 50
+
+ # 수동 데이터셋 지정 실행
+ python train.py --data-yaml ./datasets/yolo_dataset/dataset.yaml --model-size yolov8s.pt --epochs 50
  ```
 
 ### 주요 매개변수

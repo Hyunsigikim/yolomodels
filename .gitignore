@@ -1,4 +1,9 @@
 /.yolov8
-/project4
-/yolo_dataset4
-/runs/detect/*
+/runs/
+/exports/*
+!/exports/.gitkeep
+/datasets/*
+!/datasets/.gitkeep
+/models/*
+**/__pycache__/
+*.pyc

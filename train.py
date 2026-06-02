@@ -12,8 +12,22 @@ def _default_device():
     except Exception:
         return ''
 
+def _detect_dataset_yaml():
+    datasets_dir = Path('datasets')
+    if not datasets_dir.exists() or not datasets_dir.is_dir():
+        return None
+    
+    # Find all dataset.yaml files recursively
+    yaml_files = list(datasets_dir.glob('**/dataset.yaml'))
+    if not yaml_files:
+        return None
+        
+    # Sort by modification time, latest first
+    yaml_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return yaml_files[0]
+
 def train_model(
-    data_yaml,
+    data_yaml=None,
     model_size='yolov8s.pt',
     epochs=50,
     imgsz=640,
@@ -27,6 +41,17 @@ def train_model(
     save_best=True,
     save_best_name=None,
 ):
+    if data_yaml is None:
+        detected = _detect_dataset_yaml()
+        if detected:
+            data_yaml = str(detected)
+            print(f"Auto-detected dataset configuration: {data_yaml}")
+        else:
+            raise FileNotFoundError(
+                "dataset yaml not specified and none found in 'datasets/' directory. "
+                "Please specify path to dataset.yaml with --data-yaml."
+            )
+
     data_yaml_path = Path(data_yaml)
     if not data_yaml_path.exists():
         raise FileNotFoundError(f"dataset yaml not found: {data_yaml}")
@@ -77,7 +102,7 @@ def train_model(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train YOLOv8 model on custom dataset')
-    parser.add_argument('--data-yaml', type=str, required=True, help='Path to dataset YAML file')
+    parser.add_argument('--data-yaml', type=str, default=None, help='Path to dataset YAML file. Defaults to auto-detecting in datasets/ directory.')
     parser.add_argument(
         '--model-size',
         type=str,
