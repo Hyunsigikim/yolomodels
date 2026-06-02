@@ -11,6 +11,22 @@ random.seed(42)
 project_dir = Path('project4') # 여기를 변경
 dataset_dir = Path('yolo_dataset4')
 
+# Label Studio export uses 1-based ids: 1=car, 2=bike, 3=truck, 4=other.
+# Ultralytics YOLO requires zero-based contiguous ids: 0=car, 1=bike, 2=truck, 3=other.
+LABEL_ID_REMAP = {
+    '1': '0',
+    '2': '1',
+    '3': '2',
+    '4': '3',
+}
+
+DATASET_CLASS_NAMES = {
+    0: 'car',
+    1: 'bike',
+    2: 'truck',
+    3: 'other',
+}
+
 # Create output directories
 for split in ['train', 'val', 'test']:
     (dataset_dir / split / 'images').mkdir(parents=True, exist_ok=True)
@@ -58,7 +74,7 @@ def copy_files(files, split):
             label_path = project_dir / 'labels' / label_name
             if label_path.exists():
                 dest_label = dataset_dir / split / 'labels' / f"{img_path.stem}.txt"
-                shutil.copy2(label_path, dest_label)
+                remap_label_file(label_path, dest_label)
                 copied_labels += 1
                 label_copied = True
                 break
@@ -70,6 +86,30 @@ def copy_files(files, split):
     if copied_labels < len(files):
         print(f"Warning: Only found labels for {copied_labels} out of {len(files)} images in {split} set")
 
+def remap_label_file(src_label, dest_label):
+    remapped_lines = []
+    with open(src_label, 'r', encoding='utf-8') as f:
+        for line_number, line in enumerate(f, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            parts = stripped.split()
+            class_id = parts[0].lstrip('\ufeff')
+            if class_id not in LABEL_ID_REMAP:
+                raise ValueError(
+                    f"Unsupported Label Studio class id '{class_id}' in {src_label}:{line_number}. "
+                    f"Expected one of {', '.join(LABEL_ID_REMAP)}."
+                )
+
+            parts[0] = LABEL_ID_REMAP[class_id]
+            remapped_lines.append(' '.join(parts))
+
+    with open(dest_label, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(remapped_lines))
+        if remapped_lines:
+            f.write('\n')
+
 # Copy files to their respective directories
 copy_files(train_files, 'train')
 copy_files(val_files, 'val')
@@ -79,12 +119,10 @@ print("Dataset splitting complete!")
 
 # Read class information from notes.json
 try:
-    with open(project_dir / 'notes.json', 'r') as f:
+    with open(project_dir / 'notes.json', 'r', encoding='utf-8-sig') as f:
         notes = json.load(f)
     
-    # Sort categories by id to ensure correct order
-    categories = sorted(notes['categories'], key=lambda x: x['id'])
-    class_names = {str(cat['id']): cat['name'] for cat in categories}
+    class_names = DATASET_CLASS_NAMES
     
     # Generate names section for YAML
     names_section = '\n'.join([f'  {id_}: {name}' for id_, name in class_names.items()])
@@ -106,7 +144,7 @@ names:
     with open(dataset_dir / 'dataset.yaml', 'w', encoding='utf-8') as f:
         f.write(dataset_yaml)
     
-    print(f"Loaded {len(class_names)} classes from notes.json")
+    print(f"Loaded {len(class_names)} classes using fixed Label Studio -> YOLO mapping")
     
 except Exception as e:
     print(f"Error reading notes.json: {e}")
@@ -122,10 +160,10 @@ nc: 4
 
 # Classes
 names:
-  0: bike
-  1: car
-  2: other
-  3: truck
+  0: car
+  1: bike
+  2: truck
+  3: other
 """
     with open(dataset_dir / 'dataset.yaml', 'w', encoding='utf-8') as f:
         f.write(dataset_yaml)
