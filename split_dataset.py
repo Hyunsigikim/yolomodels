@@ -173,79 +173,74 @@ def remap_label_file(src_label, dest_label, label_id_remap):
         if remapped_lines:
             f.write('\n')
 
-def main():
-    parser = argparse.ArgumentParser(description="Split image/label dataset into train, val, and test sets for YOLO.")
-    parser.add_argument('--input', '-i', type=str, default=None,
-                        help="Input project directory containing 'images' and 'labels'. Defaults to the latest subfolder under 'exports/'.")
-    parser.add_argument('--output', '-o', type=str, default='datasets/yolo_dataset',
-                        help="Output directory for the processed YOLO dataset. Defaults to 'datasets/yolo_dataset'.")
-    parser.add_argument('--train-ratio', type=float, default=0.7, help="Ratio of data for training (default: 0.7)")
-    parser.add_argument('--val-ratio', type=float, default=0.15, help="Ratio of data for validation (default: 0.15)")
-    parser.add_argument('--test-ratio', type=float, default=0.15, help="Ratio of data for testing (default: 0.15)")
-    parser.add_argument('--seed', type=int, default=42, help="Random seed for reproducibility (default: 42)")
-    parser.add_argument('--exts', type=str, default='jpg,jpeg,png', help="Comma-separated image extensions to search (default: 'jpg,jpeg,png')")
-    
-    args = parser.parse_args()
-    
-    # Set random seed for reproducibility
-    random.seed(args.seed)
-    
+def split_dataset(
+    input_dir=None,
+    output_dir='datasets/yolo_dataset',
+    train_ratio=0.7,
+    val_ratio=0.15,
+    test_ratio=0.15,
+    seed=42,
+    exts='jpg,jpeg,png'
+):
+    """
+    Split project images and labels into train/val/test splits and generate dataset.yaml.
+    Returns (Path to dataset.yaml, dict of class_names).
+    """
+    random.seed(seed)
+
     # Resolve input directory
-    if args.input:
-        project_dir = Path(args.input)
+    if input_dir:
+        project_dir = Path(input_dir)
     else:
         detected = detect_input_directory()
         if detected:
             project_dir = detected
             print(f"Auto-detected input directory: {project_dir}")
         else:
-            print("Error: No valid project directory found in 'exports/'.")
-            print("Please place your Label Studio export inside 'exports/' or specify --input.")
-            return
-            
+            raise FileNotFoundError(
+                "No valid project directory found in 'exports/'. "
+                "Please place your Label Studio export inside 'exports/' or specify input_dir."
+            )
+
     if not project_dir.exists():
-        print(f"Error: Input directory does not exist: {project_dir}")
-        return
-        
-    dataset_dir = Path(args.output)
-    
+        raise FileNotFoundError(f"Input directory does not exist: {project_dir}")
+
+    dataset_dir = Path(output_dir)
+
     # Verify split ratios
-    total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
+    total_ratio = train_ratio + val_ratio + test_ratio
     if not (0.99 <= total_ratio <= 1.01):
-        print(f"Error: Split ratios sum to {total_ratio:.2f}, but must equal 1.0")
-        return
+        raise ValueError(f"Split ratios sum to {total_ratio:.2f}, but must equal 1.0")
 
     # Detect classes and construct label remap
     label_id_remap, class_names = detect_classes_and_mapping(project_dir)
     if not class_names:
-        print("Error: No classes could be resolved. Cannot construct dataset.")
-        return
-        
+        raise ValueError("No classes could be resolved. Cannot construct dataset.")
+
     print(f"Active Label Remap: {label_id_remap}")
-    
+
     # Create output directories
     for split in ['train', 'val', 'test']:
         (dataset_dir / split / 'images').mkdir(parents=True, exist_ok=True)
         (dataset_dir / split / 'labels').mkdir(parents=True, exist_ok=True)
 
     # Get all image files matching the extensions
-    exts = [e.strip().lower() for e in args.exts.split(',')]
+    ext_list = [e.strip().lower() for e in exts.split(',')]
     image_files = []
-    for ext in exts:
+    for ext in ext_list:
         image_files.extend(list(project_dir.glob(f'images/*.{ext}')))
         image_files.extend(list(project_dir.glob(f'images/*.{ext.upper()}')))
-        
+
     print(f"Found {len(image_files)} image files")
     if not image_files:
-        print("Error: No images found. Exiting.")
-        return
+        raise FileNotFoundError(f"No images found in {project_dir / 'images'}.")
 
     # Shuffle the dataset
     random.shuffle(image_files)
 
     total = len(image_files)
-    train_end = int(args.train_ratio * total)
-    val_end = train_end + int(args.val_ratio * total)
+    train_end = int(train_ratio * total)
+    val_end = train_end + int(val_ratio * total)
 
     # Split the dataset
     train_files = image_files[:train_end]
@@ -260,13 +255,13 @@ def main():
             # Copy image
             dest_img = dataset_dir / split / 'images' / img_path.name
             shutil.copy2(img_path, dest_img)
-            
+
             # Try different label file naming patterns
             possible_label_names = [
                 f"{img_path.stem}_backup.txt",  # For Label Studio format
                 f"{img_path.stem}.txt",         # Standard YOLO format
             ]
-            
+
             label_copied = False
             for label_name in possible_label_names:
                 label_path = project_dir / 'labels' / label_name
@@ -279,10 +274,10 @@ def main():
                         break
                     except Exception as e:
                         print(f"Error processing label file {label_path}: {e}")
-            
+
             if not label_copied:
                 print(f"Warning: No label file found for {img_path.name}")
-        
+
         print(f"Copied {len(files)} images and {copied_labels} labels to {split} set")
         if copied_labels < len(files):
             print(f"Warning: Only found labels for {copied_labels} out of {len(files)} images in {split} set")
@@ -292,10 +287,9 @@ def main():
     copy_files(val_files, 'val')
     copy_files(test_files, 'test')
 
-    print("Dataset splitting complete!")
-
     # Generate dataset.yaml file
     names_section = '\n'.join([f'  {id_}: {name}' for id_, name in class_names.items()])
+    dataset_yaml_path = dataset_dir / 'dataset.yaml'
     dataset_yaml = f"""path: {str(dataset_dir.resolve())}
 train: train/images
 val: val/images
@@ -308,23 +302,37 @@ nc: {len(class_names)}
 names:
 {names_section}
 """
-    
-    with open(dataset_dir / 'dataset.yaml', 'w', encoding='utf-8') as f:
+
+    with open(dataset_yaml_path, 'w', encoding='utf-8') as f:
         f.write(dataset_yaml)
 
-    print(f"Created dataset.yaml configuration file at {dataset_dir / 'dataset.yaml'}")
-    print("\nDataset structure:")
-    print(f"{dataset_dir}")
-    print("├── train/")
-    print("│   ├── images/")
-    print("│   └── labels/")
-    print("├── val/")
-    print("│   ├── images/")
-    print("│   └── labels/")
-    print("├── test/")
-    print("│   ├── images/")
-    print("│   └── labels/")
-    print("└── dataset.yaml")
+    print(f"Created dataset.yaml configuration file at {dataset_yaml_path}")
+    return dataset_yaml_path, class_names
+
+def main():
+    parser = argparse.ArgumentParser(description="Split image/label dataset into train, val, and test sets for YOLO.")
+    parser.add_argument('--input', '-i', type=str, default=None,
+                        help="Input project directory containing 'images' and 'labels'. Defaults to the latest subfolder under 'exports/'.")
+    parser.add_argument('--output', '-o', type=str, default='datasets/yolo_dataset',
+                        help="Output directory for the processed YOLO dataset. Defaults to 'datasets/yolo_dataset'.")
+    parser.add_argument('--train-ratio', type=float, default=0.7, help="Ratio of data for training (default: 0.7)")
+    parser.add_argument('--val-ratio', type=float, default=0.15, help="Ratio of data for validation (default: 0.15)")
+    parser.add_argument('--test-ratio', type=float, default=0.15, help="Ratio of data for testing (default: 0.15)")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed for reproducibility (default: 42)")
+    parser.add_argument('--exts', type=str, default='jpg,jpeg,png', help="Comma-separated image extensions to search (default: 'jpg,jpeg,png')")
+
+    args = parser.parse_args()
+
+    split_dataset(
+        input_dir=args.input,
+        output_dir=args.output,
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+        seed=args.seed,
+        exts=args.exts,
+    )
 
 if __name__ == '__main__':
     main()
+

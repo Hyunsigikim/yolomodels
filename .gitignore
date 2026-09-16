@@ -1,11 +1,35 @@
-/.yolov8
-/runs/
-/exports/*
-!/exports/.gitkeep
-/datasets/*
-!/datasets/.gitkeep
-/models/*
-/*.pt
-/*.onnx
-**/__pycache__/
-*.pyc
+# Virtual Environments
+.yolov8/
+venv/
+env/
+.env/
+ENV/
+
+# Python Cache & Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Training & Inference Outputs (Never commit large weights/runs)
+runs/*
+!runs/.gitkeep
+models/*
+!models/.gitkeep
+*.pt
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+
+# Data & Export Directories (Separated training machine dataset)
+exports/*
+!exports/.gitkeep
+datasets/*
+!datasets/.gitkeep
+
+# OS & IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

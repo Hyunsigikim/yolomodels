@@ -44,25 +44,11 @@ fi
 
 echo ""
 echo "=================================================="
-echo "[YOLO Pipeline] Step 1: Splitting dataset..."
+echo "[YOLO Pipeline] Running All-in-One Pipeline..."
 echo "=================================================="
-python split_dataset.py "$@"
+python main.py "$@"
 if [ $? -ne 0 ]; then
-    echo "[Error] Dataset split failed."
+    echo ""
+    echo "[Error] Pipeline execution encountered an error."
     exit 1
 fi
-
-echo ""
-echo "=================================================="
-echo "[YOLO Pipeline] Step 2: Training YOLO model..."
-echo "=================================================="
-python train.py --epochs 50 --model-size yolov8s.pt
-if [ $? -ne 0 ]; then
-    echo "[Error] YOLO model training failed."
-    exit 1
-fi
-
-echo ""
-echo "=================================================="
-echo "[YOLO Pipeline] Pipeline completed successfully!"
-echo "=================================================="

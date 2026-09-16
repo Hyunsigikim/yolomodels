@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 echo ==================================================
 echo [YOLO Pipeline] Checking virtual environment...
 echo ==================================================
@@ -46,28 +47,14 @@ if not exist ".\.yolov8\Scripts\activate.bat" (
 
 echo.
 echo ==================================================
-echo [YOLO Pipeline] Step 1: Splitting dataset...
+echo [YOLO Pipeline] Running All-in-One Pipeline...
 echo ==================================================
-python split_dataset.py %*
+python main.py %*
 if errorlevel 1 (
-    echo [Error] Dataset split failed.
+    echo.
+    echo [Error] Pipeline execution encountered an error.
     pause
     exit /b 1
 )
 
-echo.
-echo ==================================================
-echo [YOLO Pipeline] Step 2: Training YOLO model...
-echo ==================================================
-python train.py --epochs 50 --model-size yolov8s.pt
-if errorlevel 1 (
-    echo [Error] YOLO model training failed.
-    pause
-    exit /b 1
-)
-
-echo.
-echo ==================================================
-echo [YOLO Pipeline] Pipeline completed successfully!
-echo ==================================================
 pause
