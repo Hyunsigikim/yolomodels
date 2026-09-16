@@ -77,24 +77,28 @@ python main.py
 # 특정 프로젝트 폴더 지정 실행
 python main.py topveiw
 
-# 옵션 커스텀 실행 예시 (에포크, 모델 크기 등 변경 시)
+# 옵션 커스텀 실행 예시 (에포크, 모델 크기, 재개, 고속 하드링크 등)
 python main.py topveiw --model-size yolov8m.pt --epochs 100 --batch 16
+
+# 중단된 학습 이어하기 (Resume)
+python main.py topveiw --resume
 ```
 
 ---
 
 ## 🎯 학습 완료 후 최종 모델 확인 및 배포
 
-학습과 ONNX 변환이 완료되면 `models/` 디렉토리에 모델 가중치가 자동 저장됩니다.
+학습과 ONNX 변환이 완료되면 `models/` 디렉토리에 모델 가중치와 배포용 메타데이터 명세서가 자동 저장됩니다.
 
 ```
 models/
 ├── topveiw_best_20260916.pt       # PyTorch 가중치 파일
-└── topveiw_best_20260916.onnx     # 🌟 인공지능 프로그램 배포/업로드용 ONNX 모델
+├── topveiw_best_20260916.onnx     # 🌟 인공지능 프로그램 배포/업로드용 ONNX 모델 (최적화 완료)
+└── topveiw_best_20260916_meta.json # 📋 클래스 ID-이름 맵핑 및 모델 사양 메타데이터
 ```
 
-> **🚀 인공지능 프로그램 사용법**:  
-> 생성된 `models/topveiw_best_YYYYMMDD.onnx` (또는 `.pt`) 파일을 복사하여 관제/추론 프로그램에 업로드하여 즉시 사용하시면 됩니다.
+> **🚀 인공지능 프로그램 배포 방법**:  
+> 생성된 `models/topveiw_best_YYYYMMDD.onnx` 모델과 `_meta.json` 명세서를 복사하여 관제/추론 프로그램에 업로드하여 즉시 사용하시면 됩니다.
 
 ---
 

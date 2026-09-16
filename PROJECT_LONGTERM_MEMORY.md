@@ -72,3 +72,4 @@ python main.py <프로젝트명> --model-size yolov8m.pt --epochs 100 --batch 16
 | 2026-09-16 | Feat | Label Studio 연동 가이드 및 서버 정보(`10.1.100.82`), 클래스 매핑 수록 | README.md 최신화 |
 | 2026-09-16 | Refactor | 올인원 단일 실행 파이프라인 `main.py` 구축 및 `split_dataset.py`, `run_pipeline.bat` 연동 개선 | 사용성 대폭 향상 |
 | 2026-09-16 | Chore | 대용량 가중치/데이터셋 Git 분리 설정(`.gitignore`, `.gitkeep`) 및 `PROJECT_LONGTERM_MEMORY.md` 마스터 문서 수립 | 형상관리 최적화 |
+| 2026-09-16 | Refactor | 시스템 5대 기능 고도화: Negative Sample 빈 라벨 생성, 고속 하드링크 전송, Resume 재개, ONNX 그래프 최적화, 배포용 `metadata.json` 동시 출력 | 시스템 안정성 및 배포성 극대화 |

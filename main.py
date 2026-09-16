@@ -84,7 +84,7 @@ def resolve_project_dir(user_input=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="YOLOv8 올인원 파이프라인 (데이터 분할 + 모델 학습 + ONNX 변환 + 가중치 저장)",
+        description="YOLOv8 올인원 파이프라인 (데이터 분할 + 모델 학습 + ONNX 변환 + 가중치 & 메타데이터 저장)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     # Positional or named project argument
@@ -100,7 +100,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=100,
                         help="학습 에포크 수")
     parser.add_argument('--batch', type=int, default=16,
-                        help="배치 크기")
+                        help="배치 크기 (-1 지정 시 AutoBatch)")
     parser.add_argument('--imgsz', type=int, default=640,
                         help="입력 이미지 해상도")
     parser.add_argument('--device', type=str, default=None,
@@ -111,6 +111,14 @@ def main():
                         help="검증 데이터 비율")
     parser.add_argument('--test-ratio', type=float, default=0.15,
                         help="테스트 데이터 비율")
+    parser.add_argument('--no-hardlink', action='store_true',
+                        help="하드링크를 비활성화하고 전체 파일 물리 복사 강제")
+    parser.add_argument('--resume', action='store_true',
+                        help="이전 체크포인트(last.pt)에서 학습 이어하기")
+    parser.add_argument('--dynamic', action='store_true',
+                        help="ONNX export 시 가변 배치/해상도 dynamic 축 활성화")
+    parser.add_argument('--opset', type=int, default=None,
+                        help="ONNX opset 버전 지정")
 
     args = parser.parse_args()
 
@@ -128,20 +136,25 @@ def main():
     print(f"📍 출력 데이터셋 경로: {output_dataset_dir.resolve()}")
     print(f"⚙️  모델 설정: {args.model_size} | Epochs: {args.epochs} | Batch: {args.batch}")
 
-    # Step 1: Split Dataset
-    print("\n-------------------------------------------------------")
-    print("🔄 [Step 1/2] 데이터셋 분할 및 dataset.yaml 생성 중...")
-    print("-------------------------------------------------------")
-    dataset_yaml_path, class_names = split_dataset(
-        input_dir=str(project_dir),
-        output_dir=str(output_dataset_dir),
-        train_ratio=args.train_ratio,
-        val_ratio=args.val_ratio,
-        test_ratio=args.test_ratio,
-    )
-
-    print(f"✅ 데이터셋 준비 완료: {dataset_yaml_path}")
-    print(f"🏷️  인식된 클래스 목록: {class_names}")
+    # Step 1: Split Dataset (Skip if resuming unless dataset doesn't exist)
+    dataset_yaml_path = output_dataset_dir / 'dataset.yaml'
+    if args.resume and dataset_yaml_path.exists():
+        print("\n🔄 [Step 1/2 건너뜀] 학습 재개 모드: 기존 dataset.yaml을 사용합니다.")
+        class_names = {}
+    else:
+        print("\n-------------------------------------------------------")
+        print("🔄 [Step 1/2] 데이터셋 분할 및 dataset.yaml 생성 중...")
+        print("-------------------------------------------------------")
+        dataset_yaml_path, class_names = split_dataset(
+            input_dir=str(project_dir),
+            output_dir=str(output_dataset_dir),
+            train_ratio=args.train_ratio,
+            val_ratio=args.val_ratio,
+            test_ratio=args.test_ratio,
+            use_hardlink=not args.no_hardlink
+        )
+        print(f"✅ 데이터셋 준비 완료: {dataset_yaml_path}")
+        print(f"🏷️  인식된 클래스 목록: {class_names}")
 
     # Step 2: Train Model & Export ONNX
     print("\n-------------------------------------------------------")
@@ -151,10 +164,9 @@ def main():
     models_dir = Path('models')
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    today = datetime.now().strftime('%Y%m%d')
     base_save_name = f"{project_name}_best"
 
-    train_model(
+    result_info = train_model(
         data_yaml=str(dataset_yaml_path),
         model_size=args.model_size,
         epochs=args.epochs,
@@ -168,27 +180,37 @@ def main():
         models_dir=str(models_dir),
         save_best=True,
         save_best_name=base_save_name,
+        resume=args.resume,
+        simplify=True,
+        dynamic=args.dynamic,
+        opset=args.opset,
     )
 
     # Summary
-    pt_model_path = models_dir / f"{base_save_name}_{today}.pt"
-    onnx_model_path = models_dir / f"{base_save_name}_{today}.onnx"
+    pt_model_path = result_info.get('pt_path')
+    onnx_model_path = result_info.get('onnx_path')
+    meta_json_path = result_info.get('meta_path')
+    final_classes = result_info.get('classes') or class_names
 
     print("\n" + "=" * 70)
-    print("🎉 [파이프라인 완료] 모델 학습 및 ONNX 변환이 성공적으로 끝났습니다!")
+    print("🎉 [파이프라인 완료] 모델 학습, ONNX 최적화 및 메타데이터 생성이 완료되었습니다!")
     print("=" * 70)
     print(f"📁 프로젝트명: {project_name}")
     print("🎯 클래스 정보:")
-    for cid, cname in class_names.items():
+    for cid, cname in final_classes.items():
         print(f"   {cid}: {cname}")
-    print("\n💾 생성된 최종 모델 가중치:")
-    if pt_model_path.exists():
-        print(f"   - PyTorch 모델 (.pt):   {pt_model_path.resolve()}")
-    if onnx_model_path.exists():
-        print(f"   - ONNX 배포 모델 (.onnx): {onnx_model_path.resolve()}")
-    print("\n🚀 인공지능 프로그램 사용 안내:")
-    print(f"   위 생성된 '{onnx_model_path.name}' (또는 .pt) 파일을 복사하여")
-    print(f"   인공지능 추론/관제 프로그램에 업로드하여 사용하시면 됩니다.")
+    print("\n💾 생성된 최종 산출물 (models/):")
+    if pt_model_path and pt_model_path.exists():
+        print(f"   - PyTorch 모델 (.pt):      {pt_model_path.resolve()}")
+    if onnx_model_path and onnx_model_path.exists():
+        print(f"   - ONNX 배포 모델 (.onnx):    {onnx_model_path.resolve()}")
+    if meta_json_path and meta_json_path.exists():
+        print(f"   - 배포 메타데이터 (.json):   {meta_json_path.resolve()}")
+
+    print("\n🚀 인공지능 프로그램 배포 안내:")
+    if onnx_model_path:
+        print(f"   1) '{onnx_model_path.name}' 모델 파일과 '{meta_json_path.name}' 메타데이터를 복사")
+        print(f"   2) 인공지능 추론/관제 프로그램에 업로드하여 즉시 사용")
     print("=" * 70 + "\n")
 
 if __name__ == '__main__':

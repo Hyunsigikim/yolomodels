@@ -173,6 +173,19 @@ def remap_label_file(src_label, dest_label, label_id_remap):
         if remapped_lines:
             f.write('\n')
 
+def _fast_transfer(src_path: Path, dst_path: Path, use_hardlink: bool = True):
+    """Attempt hardlink first to save disk space and I/O; fallback to copy if cross-device or failed."""
+    if dst_path.exists():
+        dst_path.unlink()
+    if use_hardlink:
+        try:
+            os.link(src_path, dst_path)
+            return True
+        except (OSError, AttributeError):
+            pass
+    shutil.copy2(src_path, dst_path)
+    return False
+
 def split_dataset(
     input_dir=None,
     output_dir='datasets/yolo_dataset',
@@ -180,10 +193,12 @@ def split_dataset(
     val_ratio=0.15,
     test_ratio=0.15,
     seed=42,
-    exts='jpg,jpeg,png'
+    exts='jpg,jpeg,png',
+    use_hardlink=True
 ):
     """
     Split project images and labels into train/val/test splits and generate dataset.yaml.
+    Supports negative samples (empty background labels) and fast hardlinking.
     Returns (Path to dataset.yaml, dict of class_names).
     """
     random.seed(seed)
@@ -249,12 +264,13 @@ def split_dataset(
 
     print(f"Splitting into: {len(train_files)} train, {len(val_files)} val, {len(test_files)} test")
 
-    def copy_files(files, split):
+    def process_split_files(files, split):
         copied_labels = 0
+        negative_samples = 0
         for img_path in files:
-            # Copy image
+            # Transfer image
             dest_img = dataset_dir / split / 'images' / img_path.name
-            shutil.copy2(img_path, dest_img)
+            _fast_transfer(img_path, dest_img, use_hardlink=use_hardlink)
 
             # Try different label file naming patterns
             possible_label_names = [
@@ -276,16 +292,17 @@ def split_dataset(
                         print(f"Error processing label file {label_path}: {e}")
 
             if not label_copied:
-                print(f"Warning: No label file found for {img_path.name}")
+                # Create empty .txt file for negative sample (background image)
+                dest_label = dataset_dir / split / 'labels' / f"{img_path.stem}.txt"
+                dest_label.touch()
+                negative_samples += 1
 
-        print(f"Copied {len(files)} images and {copied_labels} labels to {split} set")
-        if copied_labels < len(files):
-            print(f"Warning: Only found labels for {copied_labels} out of {len(files)} images in {split} set")
+        print(f"Processed {len(files)} images for {split} set (Annotations: {copied_labels}, Negative/Backgrounds: {negative_samples})")
 
     # Copy files to their respective directories
-    copy_files(train_files, 'train')
-    copy_files(val_files, 'val')
-    copy_files(test_files, 'test')
+    process_split_files(train_files, 'train')
+    process_split_files(val_files, 'val')
+    process_split_files(test_files, 'test')
 
     # Generate dataset.yaml file
     names_section = '\n'.join([f'  {id_}: {name}' for id_, name in class_names.items()])
@@ -320,6 +337,7 @@ def main():
     parser.add_argument('--test-ratio', type=float, default=0.15, help="Ratio of data for testing (default: 0.15)")
     parser.add_argument('--seed', type=int, default=42, help="Random seed for reproducibility (default: 42)")
     parser.add_argument('--exts', type=str, default='jpg,jpeg,png', help="Comma-separated image extensions to search (default: 'jpg,jpeg,png')")
+    parser.add_argument('--no-hardlink', action='store_true', help="Disable hardlinks and force full file copy")
 
     args = parser.parse_args()
 
@@ -331,8 +349,8 @@ def main():
         test_ratio=args.test_ratio,
         seed=args.seed,
         exts=args.exts,
+        use_hardlink=not args.no_hardlink
     )
 
 if __name__ == '__main__':
     main()
-
