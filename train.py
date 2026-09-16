@@ -59,7 +59,17 @@ def train_model(
     if device is None:
         device = _default_device()
 
-    model = YOLO(model_size)
+    # If model_size is a simple filename (no directory separator), place it under models_dir
+    model_size_path = Path(model_size)
+    if len(model_size_path.parts) == 1:
+        models_dir_path = Path(models_dir)
+        models_dir_path.mkdir(parents=True, exist_ok=True)
+        model_load_path = models_dir_path / model_size
+    else:
+        model_load_path = model_size_path
+
+    print(f"Loading/downloading pre-trained model: {model_load_path}")
+    model = YOLO(str(model_load_path))
     model.train(
         data=str(data_yaml_path),
         epochs=epochs,
@@ -96,7 +106,29 @@ def train_model(
             print(f"Warning: weights not found in: {run_dir / 'weights'}")
 
     if not no_export:
-        model.export(format=export_format)
+        print(f"Exporting model to format: {export_format}")
+        exported_path_str = model.export(format=export_format)
+        if exported_path_str:
+            exported_path = Path(exported_path_str)
+            if exported_path.exists():
+                models_dir_path = Path(models_dir)
+                models_dir_path.mkdir(parents=True, exist_ok=True)
+                
+                ext = exported_path.suffix
+                today = datetime.now().strftime('%Y%m%d')
+                base = save_best_name.strip() if isinstance(save_best_name, str) and save_best_name.strip() else name
+                dst_export = models_dir_path / f'{base}_{today}{ext}'
+                
+                if dst_export.exists():
+                    i = 2
+                    while True:
+                        candidate = models_dir_path / f'{base}_{today}_{i}{ext}'
+                        if not candidate.exists():
+                            dst_export = candidate
+                            break
+                        i += 1
+                shutil.copy2(exported_path, dst_export)
+                print(f"Saved exported model: {dst_export}")
 
     print("Training complete!")
 
